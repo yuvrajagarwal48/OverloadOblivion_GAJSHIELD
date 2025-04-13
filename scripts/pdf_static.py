@@ -166,8 +166,31 @@ class PDFMalwareDetectorGemini:
             # Clean up temp file
             os.unlink(temp_script.name)
             
+            # If command not found error is returned, handle it gracefully
+            if output.startswith("Command not found: peepdf"):
+                logger.error("peepdf tool not found. Make sure peepdf is installed and available in your PATH.")
+                return {
+                    'error': 'peepdf tool not found. Please install it using: pip install peepdf',
+                    'raw_output': output,
+                    'score': 0,
+                    'suspicious_elements': ["Analysis skipped - peepdf tool not available"]
+                }
+            
             if not output:
                 return {'error': 'Failed to run peepdf command or no output'}
+                
+            # Check for the specific error message
+            if "*** Error: Exception not handled using the batch mode!!" in output:
+                # Create a basic result structure for error cases
+                logger.warning(f"peepdf encountered an exception in batch mode for {pdf_path}")
+                return {
+                    'raw_output': output,
+                    'error': 'peepdf batch mode exception',
+                    'catalog': {},
+                    'document_structure': {},
+                    'score': 0,
+                    'suspicious_elements': ["Could not fully analyze - peepdf batch error"]
+                }
             
             # Parse peepdf output
             results = self._parse_peepdf_output(output)
@@ -175,7 +198,7 @@ class PDFMalwareDetectorGemini:
             return results
             
         except Exception as e:
-            print(f"Error in peepdf analysis: {e}")
+            logger.error(f"Error in peepdf analysis: {e}")
             return {'error': str(e)}
     
     def _parse_peepdf_output(self, output):

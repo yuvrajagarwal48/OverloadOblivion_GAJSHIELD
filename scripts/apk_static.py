@@ -609,3 +609,4 @@ def analyze_apk(features_path=None):
             },
             'file_path': features_path
         }
+
