@@ -181,7 +181,7 @@ async def read_root(request: Request):
     <body>
         <h1>Malware Detection Service</h1>
         <p>Upload a file to analyze it for potential malicious content.</p>
-        <p><strong>Supported file types:</strong> PDF, Word documents (.doc, .docx), Excel files (.xls, .xlsx), Batch files (.bat), Executables (.exe)</p>
+        <p><strong>Supported file types:</strong> PDF, Word documents (.doc, .docx), Excel files (.xls, .xlsx), Batch files (.bat), Executables (.exe), ZIP archives (.zip)</p>
         
         <div class="upload-container">
             <h3>Select File to Analyze</h3>

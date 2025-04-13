@@ -552,6 +552,175 @@ def apk_analysis_pipeline(file_path: Optional[str] = None) -> Dict[str, Any]:
             }
         }
 
+def zip_analysis_pipeline(file_path: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Analyze a ZIP archive by recursively extracting and analyzing each file inside
+    
+    Args:
+        file_path: Path to the ZIP file, or None to find a sample
+        
+    Returns:
+        Dictionary with analysis results for all contained files
+    """
+    # Find a sample file if none provided
+    if file_path is None:
+        file_path = find_sample_file('zip')
+        if file_path is None:
+            logger.error("No ZIP file found for analysis")
+            return {
+                'error': 'No ZIP file found for analysis',
+                'analysis_timestamp': datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                'summary': {
+                    'file_path': 'none',
+                    'risk_level': 'error',
+                    'is_malicious': False,
+                    'score': 0
+                }
+            }
+        logger.info(f"Using sample ZIP file: {file_path}")
+    
+    try:
+        logger.info(f"Starting ZIP archive analysis for: {file_path}")
+        
+        import zipfile
+        
+        # Check if it's a valid zip file
+        if not zipfile.is_zipfile(file_path):
+            return {
+                'error': 'Not a valid ZIP file',
+                'file_path': file_path,
+                'analysis_timestamp': datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+                'summary': {
+                    'file_path': file_path,
+                    'risk_level': 'error',
+                    'is_malicious': False,
+                    'score': 0
+                }
+            }
+        
+        # Create a temporary directory to extract files
+        temp_dir = tempfile.mkdtemp()
+        results = {
+            'file_path': file_path,
+            'file_hash': get_file_hash(file_path),
+            'analysis_timestamp': datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            'contents': [],
+            'malicious_count': 0,
+            'suspicious_count': 0,
+            'clean_count': 0,
+            'error_count': 0
+        }
+        
+        try:
+            # Extract all files from the ZIP
+            with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                # List files in the archive
+                file_list = zip_ref.namelist()
+                results['file_count'] = len(file_list)
+                logger.info(f"Found {len(file_list)} files in ZIP archive")
+                
+                # Extract all files
+                zip_ref.extractall(temp_dir)
+                
+                # Analyze each file
+                for item in file_list:
+                    extracted_path = os.path.join(temp_dir, item)
+                    
+                    # Skip directories
+                    if os.path.isdir(extracted_path):
+                        continue
+                    
+                    # Handle nested zip files recursively
+                    if item.lower().endswith('.zip'):
+                        logger.info(f"Found nested ZIP file: {item}")
+                        nested_results = zip_analysis_pipeline(extracted_path)
+                        results['contents'].append({
+                            'relative_path': item,
+                            'type': 'zip',
+                            'analysis': nested_results
+                        })
+                        
+                        # Update counts based on nested results
+                        results['malicious_count'] += nested_results.get('malicious_count', 0)
+                        results['suspicious_count'] += nested_results.get('suspicious_count', 0)
+                        results['clean_count'] += nested_results.get('clean_count', 0)
+                        results['error_count'] += nested_results.get('error_count', 0)
+                    else:
+                        # Analyze the individual file
+                        logger.info(f"Analyzing extracted file: {item}")
+                        file_type = get_file_type(extracted_path)
+                        file_results = analyze_file(extracted_path)
+                        
+                        # Add to contents list
+                        results['contents'].append({
+                            'relative_path': item,
+                            'type': file_type,
+                            'analysis': file_results
+                        })
+                        
+                        # Update counts based on results
+                        if file_results.get('error'):
+                            results['error_count'] += 1
+                        elif file_results.get('summary', {}).get('is_malicious', False):
+                            results['malicious_count'] += 1
+                        elif file_results.get('summary', {}).get('risk_level') in ['medium', 'suspicious']:
+                            results['suspicious_count'] += 1
+                        else:
+                            results['clean_count'] += 1
+            
+            # Calculate overall risk score
+            malicious_weight = 1.0
+            suspicious_weight = 0.5
+            total_files = results['malicious_count'] + results['suspicious_count'] + results['clean_count']
+            
+            if total_files > 0:
+                weighted_score = (results['malicious_count'] * malicious_weight + 
+                                 results['suspicious_count'] * suspicious_weight) / total_files
+                score = min(weighted_score * 100, 100)
+            else:
+                score = 0
+            
+            # Determine overall maliciousness
+            is_malicious = results['malicious_count'] > 0
+            if is_malicious:
+                risk_level = "high" if results['malicious_count'] / max(total_files, 1) > 0.3 else "medium"
+            elif results['suspicious_count'] > 0:
+                risk_level = "medium" if results['suspicious_count'] / max(total_files, 1) > 0.3 else "low-medium"
+            else:
+                risk_level = "low"
+                
+            # Create summary
+            results['summary'] = {
+                'file_path': file_path,
+                'risk_level': risk_level,
+                'is_malicious': is_malicious,
+                'score': score,
+                'file_count': results['file_count'],
+                'malicious_count': results['malicious_count'],
+                'suspicious_count': results['suspicious_count'],
+                'clean_count': results['clean_count'],
+                'error_count': results['error_count']
+            }
+            
+            return results
+            
+        finally:
+            # Clean up temp directory
+            shutil.rmtree(temp_dir, ignore_errors=True)
+    except Exception as e:
+        logger.error(f"Error in ZIP analysis: {str(e)}")
+        return {
+            'error': str(e),
+            'file_path': file_path,
+            'analysis_timestamp': datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+            'summary': {
+                'file_path': file_path,
+                'risk_level': 'error',
+                'is_malicious': False,
+                'score': 0
+            }
+        }
+
 def get_file_type(file_path: str) -> str:
     """
     Determine the file type based on extension
@@ -581,7 +750,8 @@ def get_file_type(file_path: str) -> str:
         '.qr': 'qr',
         '.png': 'qr',
         '.jpg': 'qr',
-        '.jpeg': 'qr'
+        '.jpeg': 'qr',
+        '.zip': 'zip'
     }
     
     return extension_map.get(extension, 'unknown')
@@ -635,6 +805,8 @@ def analyze_file(file_path: Optional[str] = None) -> Dict[str, Any]:
         return apk_analysis_pipeline(file_path)
     elif file_type == 'qr':  # Add QR support
         return qr_analysis_pipeline(file_path)
+    elif file_type == 'zip':  # Add ZIP support
+        return zip_analysis_pipeline(file_path)
     else:
         # Unknown file type
         return {
