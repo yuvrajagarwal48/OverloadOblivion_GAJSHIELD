@@ -23,6 +23,7 @@ from .exe_dynamic_emulation import emulate
 from .exe_static1 import predict, load_model
 from .apk_feature_extractor import extract_apk_features
 from .apk_static import analyze_apk
+from .qr_static import qr_analysis_pipeline
 import torch
 
 # Configure logging
@@ -559,7 +560,7 @@ def get_file_type(file_path: str) -> str:
         file_path: Path to the file
         
     Returns:
-        File type string ('pdf', 'doc', 'xls', 'exe', 'bat', 'apk', or 'unknown')
+        File type string ('pdf', 'doc', 'xls', 'exe', 'bat', 'apk', 'qr', or 'unknown')
     """
     extension = os.path.splitext(file_path)[1].lower()
     
@@ -576,7 +577,11 @@ def get_file_type(file_path: str) -> str:
         '.rtf': 'doc',
         '.ppt': 'doc',
         '.pptx': 'doc',
-        '.apk': 'apk'  # Add APK support
+        '.apk': 'apk',
+        '.qr': 'qr',
+        '.png': 'qr',
+        '.jpg': 'qr',
+        '.jpeg': 'qr'
     }
     
     return extension_map.get(extension, 'unknown')
@@ -593,7 +598,7 @@ def analyze_file(file_path: Optional[str] = None) -> Dict[str, Any]:
     """
     # If no file provided, try to find any analyzable file
     if file_path is None:
-        for ext in ['exe', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'bat', 'apk']:  # Add APK support
+        for ext in ['exe', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'bat', 'apk', 'qr']:  # Add QR support
             file_path = find_sample_file(ext)
             if file_path:
                 logger.info(f"Using sample file for analysis: {file_path}")
@@ -628,6 +633,8 @@ def analyze_file(file_path: Optional[str] = None) -> Dict[str, Any]:
         return bat_analysis_pipeline(file_path)
     elif file_type == 'apk':  # Add APK support
         return apk_analysis_pipeline(file_path)
+    elif file_type == 'qr':  # Add QR support
+        return qr_analysis_pipeline(file_path)
     else:
         # Unknown file type
         return {
