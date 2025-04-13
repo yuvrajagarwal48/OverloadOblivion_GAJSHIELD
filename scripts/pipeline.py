@@ -570,6 +570,7 @@ def get_file_type(file_path: str) -> str:
         '.docx': 'doc',
         '.xls': 'xls', 
         '.xlsx': 'xls',
+        '.csv': 'xls',
         '.exe': 'exe',
         '.bat': 'bat',
         '.rtf': 'doc',

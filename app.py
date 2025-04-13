@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Malware Detection API
 FastAPI application for malware detection of various file types
